@@ -165,8 +165,11 @@ while True:
 	def wait_order(active_order_info):
 		last_order = (session.get_active_order()["result"][0])
 
+		start = time.time()
 		while int(session.get_active_order()["result"][0]["orderId"]) != int(active_order_info["result"]["orderId"]):
 			last_order = (session.get_active_order()["result"][0])
+			# if start - time.time() > 100:
+			#     return -666
 
 		last_order = (session.get_active_order()["result"][0])
 
@@ -174,47 +177,86 @@ while True:
 		# важдные поля last_order["executedQty"] и last_order["cummulativeQuoteQty"]
 		return last_order
 
-	def place_order(side, symbol, from_t):
+
+	def place_order(side, symbol, from_t, price):
 		qty = 0
+		info_from_symbol = bybit.session.best_bid_ask_price(symbol=symbol)
+
 		for el in session.query_account_info()["result"]["loanAccountList"]:
 			if el["tokenId"] == from_t:
 				qty = float(el["free"])
-		for i in range(15):
+		
+		if from_t != symbol[:len(from_t)]:
+			qty = qty/price
+
+		print(qty)
+		for i in range(20):
 			last_order = {}
 			if i == 0:
 				try:
-					active_order_info = (session.place_active_order(
+					active_order_info = session.place_active_order(
 						symbol=symbol,
 						side=side,
-						type="MARKET",
+						type="LIMIT",
 						qty=qty,
+						price=price,
 						timeInForce="GTC"
-					))
+					)
 					last_order = wait_order(active_order_info)
+					if last_order == -666:
+						#@dev необходимо отменить ордер и продать по цене маркета и в wait_order тоже поправить
+						session.cancel_active_order(
+							orderId=active_order_info["result"]["orderId"]
+						)
+						# info_from_symbol = bybit.session.best_bid_ask_price(symbol=symbol)
+						# if from_t != "USDT":
+						#     price_err = float(info_from_symbol["result"]["bidPrice"])
+						#     session.place_active_order(
+						#         symbol=from_t+"USDT",
+						#         side=side,
+						#         type="LIMIT",
+						#         qty=qty,
+						#         price=price_err,
+						#         timeInForce="GTC"
+						#     )
+						# return -666
 					break
 				except:
 					continue
 			else:
 				try:
-					active_order_info = (session.place_active_order(
+					active_order_info = session.place_active_order(
 						symbol=symbol,
 						side=side,
-						type="MARKET",
+						type="LIMIT",
 						qty=str(qty)[:-i],
+						price=price,
 						timeInForce="GTC"
-					))
+					)
 					last_order = wait_order(active_order_info)
+					if last_order == -666:
+						session.cancel_active_order(
+							orderId=active_order_info["result"]["orderId"]
+						)
+						# info_from_symbol = bybit.session.best_bid_ask_price(symbol=symbol)
+						# if from_t != "USDT":
+						#     price_err = float(info_from_symbol["result"]["bidPrice"])
+						#     session.place_active_order(
+						#         symbol=from_t+"USDT",
+						#         side=side,
+						#         type="LIMIT",
+						#         qty=qty,
+						#         price=price_err,
+						#         timeInForce="GTC"
+						#     )
+						# return -666
 					break
 				except:
 					continue
-
-
-		# важдные поля last_order["executedQty"] и last_order["cummulativeQuoteQty"]
 		return last_order
 
 
-
-	money = 1000
+	money = 900
 	for from_t, to_t, symbol, _ in path_trade_price:
 		price = bybit.get_absolute_token_price(from_t[0], to_t[0])
 		print(from_t, to_t, price)
@@ -223,17 +265,19 @@ while True:
 		else:
 			money = money / price
 	print(money)
-	if money > 1000:
+	if money > 901:
 		with open("logfile.txt", "a") as f:
 			f.write(str(money) + "\n")
 
-	# if money > 1005:
-	# 	for from_t, to_t, symbol, price in path_trade_price:
-	# 		if from_t[0] == symbol[:len(from_t[0])]:
-	# 			order = place_order("SELL", symbol, from_t[0])
-	# 		else:
-	# 			order = place_order("BUY", symbol, from_t[0])
-	# 		print(order)
+	if money > 901:
+		for from_t, to_t, symbol, price in path_trade_price:
+			info_from_symbol = bybit.session.best_bid_ask_price(symbol=symbol)
+			price_trade = float(info_from_symbol["result"]["askPrice"])
+			if from_t[0] == symbol[:len(from_t[0])]:
+				order = place_order("SELL", symbol, from_t, price_trade)
+			else:
+				order = place_order("BUY", symbol, from_t, price_trade)
+			print(order)
 
 
 	# изменить чтобы получал цену покупки для одного и цену продажи именно для биржи для подсчета самих путей 
@@ -242,20 +286,26 @@ while True:
 	# можно изменить и оставить то что есть и искать сделки с стандартным обменным курсом типо last_trade а потом просто среди них искать прибыльную
 
 
-	path_trade_price = path_trade_price[::-1]
-	money = 1000
-	for to_t, from_t, symbol, _ in path_trade_price:
-		price = bybit.get_absolute_token_price(from_t[0], to_t[0])
-		print(from_t, to_t, price)
-		if from_t[0] == symbol[:len(from_t[0])]:
-			money = money * price
-		else:
-			money = money / price
-	print(money)
+	# path_trade_price = path_trade_price[::-1]
+	# money = 1000
+	# for to_t, from_t, symbol, _ in path_trade_price:
+	# 	price = bybit.get_absolute_token_price(from_t[0], to_t[0])
+	# 	print(from_t, to_t, price)
+	# 	if from_t[0] == symbol[:len(from_t[0])]:
+	# 		money = money * price
+	# 	else:
+	# 		money = money / price
+	# print(money)
 
-	if money > 1000:
-		with open("logfile.txt", "a") as f:
-			f.write(str(money) + "\n")
+	# if money > 1002:
+	# 	for to_t, from_t, symbol, _ in path_trade_price:
+	# 		price = bybit.get_absolute_token_price(from_t[0], to_t[0])
+	# 		if from_t[0] == symbol[:len(from_t[0])]:
+	# 			active_order_info = place_order("BUY", symbol, from_t[0], price)
+	# 		else:
+	# 			active_order_info = place_order("SELL", symbol, from_t[0], price)
+	# 	with open("logfile.txt", "a") as f:
+	# 		f.write(str(money) + "\n")
 
 # if money >= 500:
 # 	money = 500
